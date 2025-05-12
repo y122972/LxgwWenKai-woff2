@@ -3,9 +3,6 @@ name: Convert and Release LXGW WenKai Fonts to WOFF2
 on:
   # 手动触发
   workflow_dispatch:
-  # 定时触发 (每周一检查一次)
-  schedule:
-    - cron: '0 0 * * 1'
 
 jobs:
   convert-and-release:
