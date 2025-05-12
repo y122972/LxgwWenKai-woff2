@@ -72,12 +72,8 @@ jobs:
       run: |
         git clone --recursive https://github.com/google/woff2.git
         cd woff2
-        mkdir out
-        cd out
-        cmake ..
         make
-        sudo make install
-        cd ../..
+        cd ../
     
     - name: Convert TTF to WOFF2
       run: |
@@ -85,7 +81,7 @@ jobs:
         for file in *.ttf; do
           if [ -f "$file" ] && [ -s "$file" ]; then
             echo "Converting $file to WOFF2"
-            woff2_compress "$file"
+            ../../woff2/woff2_compress "$file"
             if [ -f "${file%.ttf}.woff2" ]; then
               mv "${file%.ttf}.woff2" "../woff2/"
               echo "Successfully converted $file to WOFF2"
