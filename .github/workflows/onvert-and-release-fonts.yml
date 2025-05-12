@@ -18,7 +18,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake build-essential git wget
+        sudo apt-get install -y cmake build-essential git wget libbrotli-dev libbrotlidec-dev
     
     - name: Get latest release info from LXGW WenKai
       id: lxgw_release
