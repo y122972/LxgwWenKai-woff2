@@ -15,43 +15,27 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
       
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '16'
-        
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake build-essential git
+        sudo apt-get install -y cmake build-essential git wget
     
     - name: Get latest release info from LXGW WenKai
       id: lxgw_release
-      uses: actions/github-script@v6
-      with:
-        script: |
-          const release = await github.rest.repos.getLatestRelease({
-            owner: 'lxgw',
-            repo: 'LxgwWenKai'
-          });
-          
-          const version = release.data.tag_name;
-          console.log(`Latest version: ${version}`);
-          
-          return {
-            version: version,
-            release_id: release.data.id,
-            assets: release.data.assets.map(asset => ({
-              name: asset.name,
-              url: asset.browser_download_url
-            }))
-          };
+      run: |
+        API_URL="https://api.github.com/repos/lxgw/LxgwWenKai/releases/latest"
+        # 获取最新的版本信息
+        RELEASE_INFO=$(curl -s $API_URL)
+        VERSION=$(echo $RELEASE_INFO | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "Latest version: $VERSION"
     
     - name: Create fonts directory
       run: mkdir -p fonts/ttf fonts/woff2
       
     - name: Download TTF files
       run: |
+        # 定义要下载的字体文件
         FONT_FILES=(
           "LXGWWenKai-Light.ttf"
           "LXGWWenKai-Regular.ttf"
@@ -61,20 +45,28 @@ jobs:
           "LXGWWenKaiMono-Medium.ttf"
         )
         
-        VERSION="${{ fromJson(steps.lxgw_release.outputs.result).version }}"
-        ASSETS="${{ toJson(fromJson(steps.lxgw_release.outputs.result).assets) }}"
+        # 构建下载基础URL
+        BASE_URL="https://github.com/lxgw/LxgwWenKai/releases/download/${{ env.VERSION }}"
         
+        # 逐个下载字体文件
         for FONT_FILE in "${FONT_FILES[@]}"; do
-          echo "Processing $FONT_FILE"
-          DOWNLOAD_URL=$(echo $ASSETS | jq -r '.[] | select(.name | contains("'"$FONT_FILE"'")) | .url' | head -n 1)
+          echo "Downloading $FONT_FILE"
+          DOWNLOAD_URL="$BASE_URL/$FONT_FILE"
+          echo "URL: $DOWNLOAD_URL"
+          wget -q --show-progress -O "fonts/ttf/$FONT_FILE" "$DOWNLOAD_URL" || echo "Warning: Failed to download $FONT_FILE"
           
-          if [ -n "$DOWNLOAD_URL" ]; then
-            echo "Downloading $FONT_FILE from $DOWNLOAD_URL"
-            curl -L "$DOWNLOAD_URL" -o "fonts/ttf/$FONT_FILE"
+          # 检查文件是否成功下载
+          if [ -f "fonts/ttf/$FONT_FILE" ] && [ -s "fonts/ttf/$FONT_FILE" ]; then
+            echo "Successfully downloaded $FONT_FILE"
           else
-            echo "Warning: $FONT_FILE not found in release assets"
+            echo "Error: $FONT_FILE download failed or file is empty"
+            rm -f "fonts/ttf/$FONT_FILE" 2>/dev/null
           fi
         done
+        
+        # 列出已下载的文件
+        echo "Downloaded TTF files:"
+        ls -la fonts/ttf/
     
     - name: Install woff2 tool
       run: |
@@ -91,40 +83,36 @@ jobs:
       run: |
         cd fonts/ttf
         for file in *.ttf; do
-          if [ -f "$file" ]; then
+          if [ -f "$file" ] && [ -s "$file" ]; then
             echo "Converting $file to WOFF2"
             woff2_compress "$file"
-            mv "${file%.ttf}.woff2" "../woff2/"
+            if [ -f "${file%.ttf}.woff2" ]; then
+              mv "${file%.ttf}.woff2" "../woff2/"
+              echo "Successfully converted $file to WOFF2"
+            else
+              echo "Error: Failed to convert $file to WOFF2"
+            fi
           fi
         done
         cd ../..
     
     - name: List converted files
-      run: ls -la fonts/woff2/
+      run: |
+        echo "WOFF2 files generated:"
+        ls -la fonts/woff2/
     
     - name: Create Release
       id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
-        tag_name: lxgw-woff2-${{ fromJson(steps.lxgw_release.outputs.result).version }}
-        release_name: LXGW WenKai WOFF2 Fonts ${{ fromJson(steps.lxgw_release.outputs.result).version }}
+        tag_name: lxgw-woff2-${{ env.VERSION }}
+        name: LXGW WenKai WOFF2 Fonts ${{ env.VERSION }}
         body: |
-          WOFF2 version of LXGW WenKai fonts, converted from version ${{ fromJson(steps.lxgw_release.outputs.result).version }}
+          WOFF2 version of LXGW WenKai fonts, converted from version ${{ env.VERSION }}
           
-          Original fonts: https://github.com/lxgw/LxgwWenKai/releases/tag/${{ fromJson(steps.lxgw_release.outputs.result).version }}
+          Original fonts: https://github.com/lxgw/LxgwWenKai/releases/tag/${{ env.VERSION }}
+        files: fonts/woff2/*.woff2
         draft: false
         prerelease: false
-    
-    - name: Upload WOFF2 assets
-      run: |
-        for file in fonts/woff2/*.woff2; do
-          if [ -f "$file" ]; then
-            filename=$(basename "$file")
-            echo "Uploading $filename to release"
-            gh release upload "lxgw-woff2-${{ fromJson(steps.lxgw_release.outputs.result).version }}" "$file" --clobber
-          fi
-        done
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
