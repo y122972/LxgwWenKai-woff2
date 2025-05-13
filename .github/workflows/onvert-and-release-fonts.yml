@@ -16,6 +16,9 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y cmake build-essential git wget libbrotli-dev
+
+    - name: Create fonts directory
+      run: mkdir -p fonts/ttf fonts/woff2
     
     - name: Get latest release info from LXGW WenKai
       id: lxgw_release
@@ -24,13 +27,20 @@ jobs:
         # 获取最新的版本信息
         RELEASE_INFO=$(curl -s $API_URL)
         VERSION=$(echo $RELEASE_INFO | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
-        echo "Latest version: $VERSION"
+        echo "WENKAI_VERSION=$VERSION" >> $GITHUB_ENV
+        echo "Latest LXGW WenKai version: $VERSION"
     
-    - name: Create fonts directory
-      run: mkdir -p fonts/ttf fonts/woff2
+    - name: Get latest release info from LXGW WenKai Lite
+      id: lxgw_lite_release
+      run: |
+        API_URL="https://api.github.com/repos/lxgw/LxgwWenKai-Lite/releases/latest"
+        # 获取最新的版本信息
+        RELEASE_INFO=$(curl -s $API_URL)
+        VERSION=$(echo $RELEASE_INFO | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+        echo "WENKAI_LITE_VERSION=$VERSION" >> $GITHUB_ENV
+        echo "Latest LXGW WenKai Lite version: $VERSION"
       
-    - name: Download TTF files
+    - name: Download WenKai TTF files
       run: |
         # 定义要下载的字体文件
         FONT_FILES=(
@@ -43,7 +53,7 @@ jobs:
         )
         
         # 构建下载基础URL
-        BASE_URL="https://github.com/lxgw/LxgwWenKai/releases/download/${{ env.VERSION }}"
+        BASE_URL="https://github.com/lxgw/LxgwWenKai/releases/download/${{ env.WENKAI_VERSION }}"
         
         # 逐个下载字体文件
         for FONT_FILE in "${FONT_FILES[@]}"; do
@@ -62,7 +72,42 @@ jobs:
         done
         
         # 列出已下载的文件
-        echo "Downloaded TTF files:"
+        echo "Downloaded WenKai TTF files:"
+        ls -la fonts/ttf/
+
+    - name: Download WenKai Lite TTF files
+      run: |
+        # 定义要下载的字体文件
+        FONT_FILES=(
+          "LXGWWenKaiLite-Light.ttf"
+          "LXGWWenKaiLite-Regular.ttf"
+          "LXGWWenKaiLite-Medium.ttf"
+          "LXGWWenKaiMonoLite-Light.ttf"
+          "LXGWWenKaiMonoLite-Regular.ttf"
+          "LXGWWenKaiMonoLite-Medium.ttf"
+        )
+        
+        # 构建下载基础URL
+        BASE_URL="https://github.com/lxgw/LxgwWenKai-Lite/releases/download/${{ env.WENKAI_LITE_VERSION }}"
+        
+        # 逐个下载字体文件
+        for FONT_FILE in "${FONT_FILES[@]}"; do
+          echo "Downloading $FONT_FILE"
+          DOWNLOAD_URL="$BASE_URL/$FONT_FILE"
+          echo "URL: $DOWNLOAD_URL"
+          wget -q --show-progress -O "fonts/ttf/$FONT_FILE" "$DOWNLOAD_URL" || echo "Warning: Failed to download $FONT_FILE"
+          
+          # 检查文件是否成功下载
+          if [ -f "fonts/ttf/$FONT_FILE" ] && [ -s "fonts/ttf/$FONT_FILE" ]; then
+            echo "Successfully downloaded $FONT_FILE"
+          else
+            echo "Error: $FONT_FILE download failed or file is empty"
+            rm -f "fonts/ttf/$FONT_FILE" 2>/dev/null
+          fi
+        done
+        
+        # 列出已下载的文件
+        echo "Downloaded WenKai Lite TTF files:"
         ls -la fonts/ttf/
     
     - name: Install woff2 tool
@@ -95,17 +140,23 @@ jobs:
         ls -la fonts/woff2/
     
     - name: Create Release
-      id: create_release
-      uses: softprops/action-gh-release@v1
+      uses: ncipollo/release-action@v1
       with:
-        tag_name: lxgw-woff2-${{ env.VERSION }}
-        name: LXGW WenKai WOFF2 Fonts ${{ env.VERSION }}
+        tag: lxgw-woff2-wenkai-${{ env.WENKAI_VERSION }}-lite-${{ env.WENKAI_LITE_VERSION }}
+        name: LXGW WenKai & WenKai Lite WOFF2 Fonts (WenKai ${{ env.WENKAI_VERSION }}, Lite ${{ env.WENKAI_LITE_VERSION }})
         body: |
-          WOFF2 version of LXGW WenKai fonts, converted from version ${{ env.VERSION }}
+          WOFF2 version of LXGW WenKai and LXGW WenKai Lite fonts
           
-          Original fonts: https://github.com/lxgw/LxgwWenKai/releases/tag/${{ env.VERSION }}
-        files: fonts/woff2/*.woff2
+          Sources:
+          - LXGW WenKai ${{ env.WENKAI_VERSION }}: https://github.com/lxgw/LxgwWenKai/releases/tag/${{ env.WENKAI_VERSION }}
+          - LXGW WenKai Lite ${{ env.WENKAI_LITE_VERSION }}: https://github.com/lxgw/LxgwWenKai-Lite/releases/tag/${{ env.WENKAI_LITE_VERSION }}
+          
+          This release contains WOFF2 versions of:
+          - LXGWWenKai (Light, Regular, Medium)
+          - LXGWWenKaiMono (Light, Regular, Medium)
+          - LXGWWenKaiLite (Light, Regular, Medium)
+          - LXGWWenKaiMonoLite (Light, Regular, Medium)
+        artifacts: "fonts/woff2/*.woff2"
+        token: ${{ secrets.GITHUB_TOKEN }}
         draft: false
         prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
